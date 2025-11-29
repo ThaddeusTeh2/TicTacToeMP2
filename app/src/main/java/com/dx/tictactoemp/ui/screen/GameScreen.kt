@@ -15,6 +15,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dx.tictactoemp.di.RepositoryProvider
+import com.dx.tictactoemp.viewmodel.AuthViewModel
 import com.dx.tictactoemp.viewmodel.GameViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,12 +24,18 @@ import com.dx.tictactoemp.viewmodel.GameViewModel
 fun GameScreen(
     roomId: String,
     onBack: () -> Unit,
+    authViewModel: AuthViewModel = viewModel(),
     gameViewModel: GameViewModel = viewModel()
 ) {
+    val currentUser by authViewModel.currentUser.collectAsState()
     val uiState by gameViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val isFirebaseMode = RepositoryProvider.isFirebaseMode()
 
-    LaunchedEffect(roomId) { gameViewModel.observeGame(roomId) }
+    LaunchedEffect(roomId, currentUser) {
+        val userId = currentUser?.id ?: ""
+        gameViewModel.observeGame(roomId, userId)
+    }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let { msg ->
@@ -39,9 +47,22 @@ fun GameScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Code: ${uiState.room?.code ?: "----"}") },
+                title = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Code: ${uiState.room?.code ?: "----"}")
+                        if (isFirebaseMode && uiState.mySymbol != null) {
+                            Text("You: ${uiState.mySymbol}")
+                        }
+                    }
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    }
                 }
             )
         },
@@ -56,10 +77,18 @@ fun GameScreen(
             verticalArrangement = Arrangement.Center
         ) {
             val status = when {
-                uiState.winnerSymbol != null -> "Winner: ${uiState.winnerSymbol}"
+                uiState.winnerSymbol != null -> {
+                    if (isFirebaseMode && uiState.mySymbol == uiState.winnerSymbol) {
+                        "You Win!"
+                    } else {
+                        "Winner: ${uiState.winnerSymbol}"
+                    }
+                }
                 uiState.isDraw -> "Result: Draw"
                 uiState.isFinished -> "Finished"
-                else -> "Turn: ${uiState.nextSymbol}" // next symbol to play
+                isFirebaseMode && uiState.isMyTurn -> "Your turn (${uiState.nextSymbol})"
+                isFirebaseMode -> "Turn: ${uiState.nextSymbol}"
+                else -> "Turn: ${uiState.nextSymbol}"
             }
             Text(
                 text = status,
@@ -74,8 +103,15 @@ fun GameScreen(
             Spacer(modifier = Modifier.height(24.dp))
             GameBoard(
                 board = uiState.board,
-                onCellClick = { index -> if (!uiState.isFinished && uiState.board[index] == null) gameViewModel.submitMove(index) },
-                enabled = !uiState.isFinished
+                onCellClick = { index ->
+                    val canPlay = if (isFirebaseMode) {
+                        !uiState.isFinished && uiState.isMyTurn && uiState.board[index] == null
+                    } else {
+                        !uiState.isFinished && uiState.board[index] == null
+                    }
+                    if (canPlay) gameViewModel.submitMove(index)
+                },
+                enabled = if (isFirebaseMode) !uiState.isFinished && uiState.isMyTurn else !uiState.isFinished
             )
             Spacer(modifier = Modifier.height(24.dp))
             if (uiState.isFinished) {

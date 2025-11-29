@@ -2,6 +2,7 @@ package com.dx.tictactoemp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dx.tictactoemp.data.repository.FirebaseGameRepository
 import com.dx.tictactoemp.data.repository.GameRepository
 import com.dx.tictactoemp.data.repository.LocalGameRepository
 import com.dx.tictactoemp.di.RepositoryProvider
@@ -17,7 +18,10 @@ data class GameUiState(
     val room: Room? = null,
     val gameState: GameState? = null,
     val board: List<Char?> = List(9) { null },
+    val currentUserId: String = "",
     val nextSymbol: Char = 'X',
+    val mySymbol: Char? = null,
+    val isMyTurn: Boolean = false,
     val winnerSymbol: Char? = null,
     val isDraw: Boolean = false,
     val isFinished: Boolean = false,
@@ -31,19 +35,42 @@ class GameViewModel(
     private val _uiState = MutableStateFlow(GameUiState())
     val uiState: StateFlow<GameUiState> = _uiState
 
-    fun observeGame(roomId: String) {
+    fun observeGame(roomId: String, currentUserId: String = "") {
         viewModelScope.launch {
-            val room = (gameRepository as? LocalGameRepository)?.getRoomById(roomId)
+            // Fetch room data based on repository type
+            val room = when (gameRepository) {
+                is LocalGameRepository -> gameRepository.getRoomById(roomId)
+                is FirebaseGameRepository -> gameRepository.getRoomById(roomId)
+                else -> null
+            }
+
             gameRepository.observeGame(roomId).collect { gameState ->
-                val board = MoveCodec.deriveBoard(gameState.movesString, room?.hostUserId ?: "")
+                val hostId = room?.hostUserId ?: ""
+                val board = MoveCodec.deriveBoard(gameState.movesString, hostId)
                 val winner = WinChecker.checkWinner(board)
                 val isDraw = WinChecker.isDraw(board)
-                val nextSymbol = if (winner != null || isDraw) gameState.nextTurnUserId.first() else MoveCodec.nextSymbol(gameState.movesString)
+
+                // For Firebase mode: determine user's symbol and turn
+                val isFirebaseMode = RepositoryProvider.isFirebaseMode()
+                val mySymbol = if (isFirebaseMode && currentUserId.isNotEmpty()) {
+                    if (currentUserId == hostId) 'X' else 'O'
+                } else null
+
+                val nextSymbol = gameState.nextTurnUserId.firstOrNull() ?: 'X'
+                val isMyTurn = if (isFirebaseMode && mySymbol != null) {
+                    mySymbol == nextSymbol
+                } else {
+                    true // In local mode, any tap is allowed
+                }
+
                 _uiState.value = GameUiState(
                     room = room,
                     gameState = gameState,
                     board = board,
+                    currentUserId = currentUserId,
                     nextSymbol = nextSymbol,
+                    mySymbol = mySymbol,
+                    isMyTurn = isMyTurn,
                     winnerSymbol = winner,
                     isDraw = isDraw,
                     isFinished = winner != null || isDraw,
@@ -56,16 +83,25 @@ class GameViewModel(
     fun submitMove(cellIndex: Int) {
         val state = _uiState.value
         val roomId = state.room?.id ?: return
-        val symbol = state.nextSymbol.toString()
+
+        // In Firebase mode, use userId; in local mode, use symbol
+        val identifier = if (RepositoryProvider.isFirebaseMode()) {
+            state.currentUserId
+        } else {
+            state.nextSymbol.toString()
+        }
+
         viewModelScope.launch {
             try {
-                gameRepository.submitMove(roomId, symbol, cellIndex)
+                gameRepository.submitMove(roomId, identifier, cellIndex)
                 _uiState.value = _uiState.value.copy(error = null)
             } catch (e: Exception) {
                 val msg = when {
+                    e.message?.contains("Not your turn", true) == true -> "Not your turn"
                     e.message?.contains("already taken", true) == true -> "Cell already taken"
                     e.message?.contains("finished", true) == true -> "Game is finished"
                     e.message?.contains("Invalid cell", true) == true -> "Invalid cell"
+                    e.message?.contains("participant", true) == true -> "You are not a participant"
                     else -> e.message ?: "Move failed"
                 }
                 _uiState.value = _uiState.value.copy(error = msg)
@@ -78,7 +114,7 @@ class GameViewModel(
         viewModelScope.launch {
             try {
                 gameRepository.resetGame(roomId)
-                _uiState.value = _uiState.value.copy(error = "Rematch started")
+                _uiState.value = _uiState.value.copy(error = null)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to reset game")
             }
