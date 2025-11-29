@@ -11,11 +11,9 @@ object MoveCodec {
         return movesString.split(",").mapNotNull { move ->
             val parts = move.split("+")
             if (parts.size == 2) {
-                val userId = parts[0]
+                val symbol = parts[0] // now expected to be "X" or "O"
                 val cell = parts[1].toIntOrNull()
-                if (cell != null && cell in 0..8) {
-                    userId to cell
-                } else null
+                if (cell != null && cell in 0..8) symbol to cell else null
             } else null
         }
     }
@@ -24,7 +22,7 @@ object MoveCodec {
      * Append a new move to the movesString
      * Validates that the cell is not already used
      */
-    fun append(movesString: String, userId: String, cell: Int): String {
+    fun append(movesString: String, symbol: String, cell: Int): String {
         val moves = parse(movesString)
 
         // Check if cell already used
@@ -32,7 +30,7 @@ object MoveCodec {
             throw IllegalArgumentException("Cell already taken")
         }
 
-        val newMove = "$userId+$cell"
+        val newMove = "$symbol+$cell"
         return if (movesString.isEmpty()) newMove else "$movesString,$newMove"
     }
 
@@ -41,14 +39,11 @@ object MoveCodec {
      * Host (first player) = 'X', Joiner = 'O'
      * Returns List<Char?> of size 9
      */
-    fun deriveBoard(movesString: String, hostUserId: String): List<Char?> {
+    fun deriveBoard(movesString: String, @Suppress("UNUSED_PARAMETER") hostUserId: String): List<Char?> {
         val board = MutableList<Char?>(9) { null }
-        val moves = parse(movesString)
-
-        moves.forEach { (userId, cell) ->
-            board[cell] = if (userId == hostUserId) 'X' else 'O'
+        parse(movesString).forEach { (symbol, cell) ->
+            board[cell] = if (symbol == "X") 'X' else 'O'
         }
-
         return board
     }
 
@@ -56,7 +51,8 @@ object MoveCodec {
      * Get the symbol for a given userId
      */
     fun getSymbol(userId: String, hostUserId: String): Char {
-        return if (userId == hostUserId) 'X' else 'O'
+        return if (userId == "X") 'X' else if (userId == "O") 'O' else 'X'
     }
-}
 
+    fun nextSymbol(movesString: String): Char = if (parse(movesString).size % 2 == 0) 'X' else 'O'
+}

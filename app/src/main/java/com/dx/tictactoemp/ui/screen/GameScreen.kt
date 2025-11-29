@@ -15,7 +15,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.dx.tictactoemp.viewmodel.AuthViewModel
 import com.dx.tictactoemp.viewmodel.GameViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -23,24 +22,16 @@ import com.dx.tictactoemp.viewmodel.GameViewModel
 fun GameScreen(
     roomId: String,
     onBack: () -> Unit,
-    authViewModel: AuthViewModel = viewModel(),
     gameViewModel: GameViewModel = viewModel()
 ) {
-    val currentUser by authViewModel.currentUser.collectAsState()
     val uiState by gameViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Observe game state
-    LaunchedEffect(roomId, currentUser) {
-        currentUser?.let { user ->
-            gameViewModel.observeGame(roomId, user.id)
-        }
-    }
+    LaunchedEffect(roomId) { gameViewModel.observeGame(roomId) }
 
-    // Show errors
     LaunchedEffect(uiState.error) {
-        uiState.error?.let { error ->
-            snackbarHostState.showSnackbar(error)
+        uiState.error?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
             gameViewModel.clearError()
         }
     }
@@ -48,20 +39,9 @@ fun GameScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Code: ${uiState.room?.code ?: "----"}")
-                        Text("You: ${uiState.mySymbol ?: "-"}")
-                    }
-                },
+                title = { Text("Code: ${uiState.room?.code ?: "----"}") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 }
             )
         },
@@ -75,14 +55,14 @@ fun GameScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Status text
+            val status = when {
+                uiState.winnerSymbol != null -> "Winner: ${uiState.winnerSymbol}"
+                uiState.isDraw -> "Result: Draw"
+                uiState.isFinished -> "Finished"
+                else -> "Turn: ${uiState.nextSymbol}" // next symbol to play
+            }
             Text(
-                text = when {
-                    uiState.winnerSymbol != null -> "Winner: ${uiState.winnerSymbol}"
-                    uiState.isDraw -> "Result: Draw"
-                    uiState.isMyTurn -> "Turn: ${uiState.currentTurnSymbol} (You)"
-                    else -> "Turn: ${uiState.currentTurnSymbol}"
-                },
+                text = status,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = when {
@@ -91,32 +71,18 @@ fun GameScreen(
                     else -> MaterialTheme.colorScheme.onBackground
                 }
             )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Game board
+            Spacer(modifier = Modifier.height(24.dp))
             GameBoard(
                 board = uiState.board,
-                onCellClick = { index ->
-                    if (!uiState.isFinished && uiState.isMyTurn) {
-                        gameViewModel.submitMove(index)
-                    }
-                },
-                enabled = !uiState.isFinished && uiState.isMyTurn
+                onCellClick = { index -> if (!uiState.isFinished && uiState.board[index] == null) gameViewModel.submitMove(index) },
+                enabled = !uiState.isFinished
             )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Rematch button (only visible when game finished)
+            Spacer(modifier = Modifier.height(24.dp))
             if (uiState.isFinished) {
                 Button(
                     onClick = { gameViewModel.rematch() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                ) {
-                    Text("Rematch", fontSize = 18.sp)
-                }
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) { Text("Rematch", fontSize = 18.sp) }
             }
         }
     }
@@ -185,4 +151,3 @@ fun Cell(
         )
     }
 }
-

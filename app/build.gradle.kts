@@ -22,6 +22,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("default") {
+            keyAlias = "key0"
+            keyPassword = "aaAA11"
+            storeFile= file("$projectDir/keystore.jks")
+            storePassword = "aaAA11"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -35,8 +44,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
+    kotlinOptions { jvmTarget = "11"
     }
     buildFeatures {
         compose = true
