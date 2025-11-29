@@ -9,12 +9,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.dx.tictactoemp.di.RepositoryProvider
 import com.dx.tictactoemp.navigation.Screen
 import com.dx.tictactoemp.ui.screen.CreateRoomScreen
 import com.dx.tictactoemp.ui.screen.GameScreen
@@ -25,6 +25,10 @@ import com.dx.tictactoemp.ui.theme.TicTacToeMPTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize RepositoryProvider with Firebase mode enabled
+        RepositoryProvider.initialize(applicationContext, firebase = true)
+
         enableEdgeToEdge()
         setContent {
             TicTacToeMPTheme {
